@@ -12,21 +12,15 @@ class CachedProjection:
         envs = minibatch["env_indices_batch"]
         samples = {name: value[times, :, envs].transpose(0, 1) for name, value in self._candidate_cache.items()}
         reference_log_prob = samples["reference_log_prob"]
-        older_log_prob = samples.get("older_log_prob", reference_log_prob)
         proposal_log_prob = samples.get("proposal_log_prob")
         weights, log_ratio = self._maxent_weights(
-            samples["q_values"], reference_log_prob, older_log_prob, proposal_log_prob
+            samples["q_values"], reference_log_prob, proposal_log_prob
         )
         obs = minibatch["obs_batch"]
         self._policy_act(self.old_policy, obs, None, None)
-        previous_distribution = None
-        if self._uses_momentum():
-            self._policy_act(self.previous_policy, obs, None, None)
-            previous_distribution = self.previous_policy.distribution
         return (
             samples["actions"], samples["q_values"], weights, log_ratio,
-            reference_log_prob - older_log_prob, self.old_policy.distribution,
-            previous_distribution, samples.get("pre_tanh"), proposal_log_prob,
+            self.old_policy.distribution, samples.get("pre_tanh"), proposal_log_prob,
         )
 
     def update_critic(self, minibatch: dict) -> dict:

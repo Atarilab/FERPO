@@ -136,12 +136,6 @@ class MaxEntMPOValue(CachedProjection, MaxEntMPO):
             sampled["q_values"] = torch.cat([
                 self._candidate_value(result).reshape(-1, self.storage.num_envs)
                 for result in row["results"]], dim=0)
-            if self._uses_momentum():
-                self._policy_act(self.previous_policy, obs, None, None)
-                previous = self.previous_policy.distribution
-                sampled["older_log_prob"] = (
-                    previous.log_prob_from_pre_tanh(pre_tanh) if pre_tanh is not None
-                    else previous.log_prob(sampled["actions"])).sum(-1)
             for name, value in sampled.items():
                 if name not in cache:
                     cache[name] = value.new_empty((self.storage.num_transitions_per_env, *value.shape))
@@ -278,13 +272,6 @@ class MaxEntMPOValue(CachedProjection, MaxEntMPO):
                 sampled["pre_tanh"] = pre_tanh
             if proposal_log_prob is not None:
                 sampled["proposal_log_prob"] = proposal_log_prob
-            if self._uses_momentum():
-                self._policy_act(self.previous_policy, obs, None, None)
-                previous = self.previous_policy.distribution
-                sampled["older_log_prob"] = (
-                    previous.log_prob_from_pre_tanh(pre_tanh)
-                    if pre_tanh is not None else previous.log_prob(actions)
-                ).sum(-1)
             for name, value in sampled.items():
                 if name not in cache:
                     cache[name] = value.new_empty((st.num_transitions_per_env, *value.shape))
@@ -314,13 +301,12 @@ class MaxEntMPOValue(CachedProjection, MaxEntMPO):
             self._rollout_candidates[:] = [None] * len(self._rollout_candidates)
 
     def policy_snapshot_state_dict(self) -> dict:
-        state = super().policy_snapshot_state_dict()
-        state["value_candidate_transitions_total"] = self.candidate_transitions_total
-        state["value_candidate_generator_state"] = self._candidate_generator.get_state()
-        return state
+        return {
+            "value_candidate_transitions_total": self.candidate_transitions_total,
+            "value_candidate_generator_state": self._candidate_generator.get_state(),
+        }
 
     def load_policy_snapshot_state_dict(self, state_dict: dict | None) -> None:
-        super().load_policy_snapshot_state_dict(state_dict)
         self.candidate_transitions_total = int((state_dict or {}).get("value_candidate_transitions_total", 0))
         if state_dict and "value_candidate_generator_state" in state_dict:
             self._candidate_generator.set_state(state_dict["value_candidate_generator_state"].cpu())

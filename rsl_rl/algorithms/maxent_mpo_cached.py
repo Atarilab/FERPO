@@ -5,12 +5,11 @@ import torch
 from rsl_rl.modules import ActorQ, ActorV
 from rsl_rl.networks import TanhNormal
 from .cached_projection import CachedProjection
-from .critic_stopping import CriticStopping
 from .maxent_mpo import MaxEntMPO
 
 
-class MaxEntMPOCached(CriticStopping, CachedProjection, MaxEntMPO):
-    """Fit Q, freeze it, then reuse K scored candidates throughout actor fitting."""
+class MaxEntMPOCached(CachedProjection, MaxEntMPO):
+    """Fit Q for fixed epochs, then freeze it and reuse K scored action candidates."""
 
     def __init__(self, policy, storage, *args, **kwargs):
         if not isinstance(policy, ActorQ) or isinstance(policy, ActorV) or policy.is_recurrent:
@@ -56,13 +55,6 @@ class MaxEntMPOCached(CriticStopping, CachedProjection, MaxEntMPO):
                 sampled["pre_tanh"] = pre_tanh
             if proposal_log_prob is not None:
                 sampled["proposal_log_prob"] = proposal_log_prob
-            if self._uses_momentum():
-                self._policy_act(self.previous_policy, obs, None, None)
-                previous = self.previous_policy.distribution
-                sampled["older_log_prob"] = (
-                    previous.log_prob_from_pre_tanh(pre_tanh)
-                    if pre_tanh is not None else previous.log_prob(actions)
-                ).sum(-1)
             for name, value in sampled.items():
                 if name not in cache:
                     cache[name] = value.new_empty((st.num_transitions_per_env, *value.shape))
@@ -73,7 +65,6 @@ class MaxEntMPOCached(CriticStopping, CachedProjection, MaxEntMPO):
         self._candidate_cache = None
         try:
             metrics = super().update()
-            metrics.update(self._critic_fit_metrics)
             metrics["CachedQ/candidate_cache_bytes"] = float(sum(
                 value.numel() * value.element_size() for value in self._candidate_cache.values()
             ))

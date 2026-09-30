@@ -7,19 +7,12 @@ runner:
     critic_loss_type: hl_gauss
     forward_kl_bound: 0.3
     gamma: 0.99
-    init_alpha_momentum: 1.0e-07
     interleave_actor_critic_updates: true
     lam: 0.95
     lambda_constraint: forward_kl
     learning_rate: 0.001
     max_grad_norm: 1.0
     maxent_eps: 1.0e-08
-    momentum_ema_beta: 0.9330329915
-    momentum_factor: 0.0
-    momentum_margin: 0.0
-    momentum_margin_mode: fixed
-    momentum_reference_mode: previous
-    momentum_step_fraction: 0.0
     normalize_rewards: false
     num_action_samples: 16
     num_learning_epochs: 8
@@ -40,7 +33,6 @@ runner:
     temperature_learning_rate: 0.001
     update_entropy_lagrangian: true
     update_kl_lagrangian: true
-    update_momentum_lagrangian: false
     use_log_temperature_dual_loss: false
     use_tanh_entropy: true
     value_range_ema_alpha: 0.05

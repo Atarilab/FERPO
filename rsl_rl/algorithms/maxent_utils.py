@@ -30,10 +30,8 @@ class StatewiseEssTarget(NamedTuple):
 def compute_maxent_target_log_ratio(
     q_values: torch.Tensor,
     reference_log_prob: torch.Tensor,
-    older_reference_log_prob: torch.Tensor,
     temperature: torch.Tensor,
     lambda_lagrangian: torch.Tensor,
-    momentum_factor: torch.Tensor | float,
     eps: float,
     detach_duals: bool = True,
     entropy_multiplier: float = 1.0,
@@ -42,16 +40,10 @@ def compute_maxent_target_log_ratio(
     if detach_duals:
         temperature = temperature.detach()
         lambda_lagrangian = lambda_lagrangian.detach()
-        if isinstance(momentum_factor, torch.Tensor):
-            momentum_factor = momentum_factor.detach()
 
     entropy_coefficient = entropy_multiplier * temperature
     normalizer = (entropy_coefficient + lambda_lagrangian).clamp_min(eps)
-    return (
-        q_values
-        + momentum_factor * (reference_log_prob - older_reference_log_prob)
-        - entropy_coefficient * reference_log_prob
-    ) / normalizer
+    return (q_values - entropy_coefficient * reference_log_prob) / normalizer
 
 
 def compute_maxent_dual_value(
@@ -59,8 +51,6 @@ def compute_maxent_dual_value(
     lambda_lagrangian: torch.Tensor,
     q_values: torch.Tensor,
     reference_log_prob: torch.Tensor,
-    older_reference_log_prob: torch.Tensor,
-    momentum_factor: torch.Tensor | float,
     target_entropy: torch.Tensor,
     kl_bound: float | torch.Tensor,
     eps: float,
@@ -69,10 +59,8 @@ def compute_maxent_dual_value(
     log_ratio = compute_maxent_target_log_ratio(
         q_values,
         reference_log_prob,
-        older_reference_log_prob,
         temperature,
         lambda_lagrangian,
-        momentum_factor,
         eps,
         detach_duals=False,
         entropy_multiplier=entropy_multiplier,
@@ -90,8 +78,6 @@ def compute_maxent_dual_loss(
     lambda_lagrangian: torch.Tensor,
     q_values: torch.Tensor,
     reference_log_prob: torch.Tensor,
-    older_reference_log_prob: torch.Tensor,
-    momentum_factor: torch.Tensor | float,
     target_entropy: torch.Tensor,
     kl_bound: float | torch.Tensor,
     eps: float,
@@ -103,15 +89,11 @@ def compute_maxent_dual_loss(
         temperature = temperature.detach()
     if not update_lagrangian:
         lambda_lagrangian = lambda_lagrangian.detach()
-        if isinstance(momentum_factor, torch.Tensor):
-            momentum_factor = momentum_factor.detach()
     return -compute_maxent_dual_value(
         temperature,
         lambda_lagrangian,
         q_values,
         reference_log_prob,
-        older_reference_log_prob,
-        momentum_factor,
         target_entropy,
         kl_bound,
         eps,
@@ -122,10 +104,8 @@ def compute_maxent_dual_loss(
 def compute_maxent_target_weights(
     q_values: torch.Tensor,
     reference_log_prob: torch.Tensor,
-    older_reference_log_prob: torch.Tensor,
     temperature: torch.Tensor,
     lambda_lagrangian: torch.Tensor,
-    momentum_factor: torch.Tensor | float,
     eps: float,
     detach_duals: bool = True,
     self_normalize: bool = True,
@@ -135,10 +115,8 @@ def compute_maxent_target_weights(
     log_ratio = compute_maxent_target_log_ratio(
         q_values,
         reference_log_prob,
-        older_reference_log_prob,
         temperature,
         lambda_lagrangian,
-        momentum_factor,
         eps,
         detach_duals=detach_duals,
         entropy_multiplier=entropy_multiplier,
@@ -162,9 +140,7 @@ def normalized_effective_sample_size(weights: torch.Tensor, eps: float) -> torch
 def compute_statewise_ess_target(
     q_values: torch.Tensor,
     reference_log_prob: torch.Tensor,
-    older_reference_log_prob: torch.Tensor,
     temperature: torch.Tensor,
-    momentum_factor: torch.Tensor | float,
     target_ess: torch.Tensor | float,
     eps: float,
     bisection_steps: int,
@@ -178,18 +154,15 @@ def compute_statewise_ess_target(
     """
     if bisection_steps < 1:
         raise ValueError(f"`bisection_steps` has to be >= 1, got {bisection_steps}.")
-    if q_values.shape != reference_log_prob.shape or q_values.shape != older_reference_log_prob.shape:
+    if q_values.shape != reference_log_prob.shape:
         raise ValueError(
             "Statewise ESS inputs must have identical shapes, got "
-            f"{tuple(q_values.shape)}, {tuple(reference_log_prob.shape)}, and "
-            f"{tuple(older_reference_log_prob.shape)}."
+            f"{tuple(q_values.shape)} and {tuple(reference_log_prob.shape)}."
         )
     if q_values.shape[0] < 1:
         raise ValueError("Statewise ESS requires at least one action sample.")
 
     temperature = temperature.detach().clamp_min(eps)
-    if isinstance(momentum_factor, torch.Tensor):
-        momentum_factor = momentum_factor.detach()
     min_ess = 1.0 / q_values.shape[0]
     if not isinstance(target_ess, torch.Tensor) and not (min_ess <= target_ess <= 1.0):
         raise ValueError(
@@ -198,11 +171,7 @@ def compute_statewise_ess_target(
         )
     target_ess = torch.as_tensor(target_ess, dtype=q_values.dtype, device=q_values.device)
 
-    score = (
-        q_values
-        + momentum_factor * (reference_log_prob - older_reference_log_prob)
-        - temperature * reference_log_prob
-    )
+    score = q_values - temperature * reference_log_prob
     state_shape = score.shape[1:]
     unconstrained_denominator = temperature.expand(state_shape)
     unconstrained_log_ratio = score / unconstrained_denominator.unsqueeze(0)

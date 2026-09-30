@@ -11,7 +11,6 @@ from torch.distributions import Normal
 from rsl_rl.networks import TanhNormal
 
 from .gaussian_kl import diagonal_gaussian_kl
-from .maxent_momentum import MaxEntMomentumMixin
 from .maxent_utils import (
     compute_maxent_target_log_ratio,
     compute_statewise_ess_target,
@@ -35,7 +34,7 @@ def _temperature_dual_loss(
     return coordinate * entropy_gap.detach()
 
 
-class MaxEntMPO(MaxEntMomentumMixin, REPPO):
+class MaxEntMPO(REPPO):
     """Maximum-entropy forward projection variant of REPPO.
 
     The actor minimizes a sampled forward-KL projection onto the max-ent target
@@ -51,20 +50,12 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
         self_normalize_q_weights: bool = True,
         q_weight_ess_mode: str = "mean",
         statewise_ess_bisection_steps: int = 8,
-        momentum_factor: float = 0.0,
-        init_alpha_momentum: float = 1.0e-7,
-        momentum_margin: float = 0.0,
-        momentum_margin_mode: str = "fixed",
-        momentum_step_fraction: float = 0.0,
-        momentum_reference_mode: str = "previous",
-        momentum_ema_beta: float = 0.9330329915,
         maxent_eps: float = 1.0e-8,
         update_entropy_lagrangian: bool = True,
         use_log_temperature_dual_loss: bool = False,
         update_kl_lagrangian: bool = True,
         lambda_constraint: str = "ess",
         forward_kl_bound: float = 0.1,
-        update_momentum_lagrangian: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -125,16 +116,6 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
         self.use_log_temperature_dual_loss = bool(use_log_temperature_dual_loss)
         self.update_kl_lagrangian = update_kl_lagrangian
         self._last_statewise_lagrangian: torch.Tensor | None = None
-        self._init_maxent_momentum(
-            momentum_factor=momentum_factor,
-            init_alpha_momentum=init_alpha_momentum,
-            momentum_margin=momentum_margin,
-            momentum_margin_mode=momentum_margin_mode,
-            momentum_step_fraction=momentum_step_fraction,
-            update_momentum_lagrangian=update_momentum_lagrangian,
-            momentum_reference_mode=momentum_reference_mode,
-            momentum_ema_beta=momentum_ema_beta,
-        )
 
     def _target_ess(self) -> torch.Tensor:
         return target_effective_sample_size(
@@ -191,7 +172,6 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
         self,
         q_values: torch.Tensor,
         reference_log_prob: torch.Tensor,
-        older_reference_log_prob: torch.Tensor,
         proposal_log_prob: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if getattr(self, "q_weight_ess_mode", "mean") == "statewise":
@@ -200,9 +180,7 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
             target = compute_statewise_ess_target(
                 q_values,
                 reference_log_prob,
-                older_reference_log_prob,
                 self.policy.alpha_temp,
-                self._momentum_coefficient(),
                 self._target_ess(),
                 self.maxent_eps,
                 self.statewise_ess_bisection_steps,
@@ -214,10 +192,8 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
         log_ratio = compute_maxent_target_log_ratio(
             q_values,
             reference_log_prob,
-            older_reference_log_prob,
             self.policy.alpha_temp,
             self.policy.alpha_kl,
-            self._momentum_coefficient(),
             self.maxent_eps,
             detach_duals=True,
             entropy_multiplier=1.0,
@@ -271,9 +247,7 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
-        torch.Tensor,
         object,
-        object | None,
         torch.Tensor | None,
         torch.Tensor | None,
     ]:
@@ -300,16 +274,6 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
                 reference_log_prob = old_policy_distribution.log_prob(
                     old_policy_actions
                 ).sum(dim=-1)
-            older_reference_log_prob = reference_log_prob
-            previous_policy_distribution = None
-            if self._uses_momentum():
-                self._policy_act(self.previous_policy, obs_batch, hidden_states_batch, masks_batch)
-                previous_policy_distribution = self.previous_policy.distribution
-                older_reference_log_prob = (
-                    previous_policy_distribution.log_prob_from_pre_tanh(pre_tanh)
-                    if pre_tanh is not None
-                    else previous_policy_distribution.log_prob(old_policy_actions)
-                ).sum(dim=-1)
 
             q_values = self._evaluate_sampled_action_values(
                 obs_batch,
@@ -318,20 +282,17 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
                 masks_batch,
             )
             if proposal_log_prob is None:
-                weights, log_ratio = self._maxent_weights(q_values, reference_log_prob, older_reference_log_prob)
+                weights, log_ratio = self._maxent_weights(q_values, reference_log_prob)
             else:
                 weights, log_ratio = self._maxent_weights(
-                    q_values, reference_log_prob, older_reference_log_prob, proposal_log_prob
+                    q_values, reference_log_prob, proposal_log_prob
                 )
-        reference_log_prob_delta = reference_log_prob - older_reference_log_prob
         return (
             old_policy_actions,
             q_values.detach(),
             weights,
             log_ratio,
-            reference_log_prob_delta,
             old_policy_distribution,
-            previous_policy_distribution,
             pre_tanh,
             proposal_log_prob,
         )
@@ -356,13 +317,10 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
             q_values,
             weights,
             log_ratio,
-            reference_log_prob_delta,
             old_policy_distribution,
-            previous_policy_distribution,
-            *proposal_details,
+            pre_tanh,
+            proposal_log_prob,
         ) = self._actor_samples(minibatch)
-        # Archive-search subclasses retain the original seven-field sampling API.
-        pre_tanh, proposal_log_prob = proposal_details if proposal_details else (None, None)
         log_prob_new = (
             predicted_policy.log_prob_from_pre_tanh(pre_tanh)
             if pre_tanh is not None
@@ -395,19 +353,10 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
                 self.forward_kl_bound - rollout_forward_kl
             ).detach()
 
-        momentum_lagrange_loss = torch.zeros((), device=self.device)
-        momentum_metrics: dict[str, torch.Tensor] = {}
-        if previous_policy_distribution is not None:
-            momentum_lagrange_loss, momentum_metrics = self._momentum_lagrange_loss_and_metrics(
-                predicted_policy,
-                old_policy_distribution,
-                previous_policy_distribution,
-            )
-
         self._set_critic_grad(False)
         self.optimizer.zero_grad()
         actor_loss = (policy_loss + temp_target_loss + lambda_ess_loss
-                      + lambda_forward_kl_loss + momentum_lagrange_loss)
+                      + lambda_forward_kl_loss)
         actor_loss.backward()
         if self.is_multi_gpu:
             self.reduce_parameters()
@@ -432,16 +381,6 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
             normalizer = self.policy.alpha_temp + self.policy.alpha_kl
         else:
             normalizer = self.policy.alpha_temp + self._last_statewise_lagrangian
-        momentum = self._momentum_coefficient()
-        momentum_stability_ratio = (momentum / normalizer.clamp_min(self.maxent_eps)).max()
-        momentum_stability_margin = 1.0 - momentum_stability_ratio
-        reference_policy_kl_estimate = reference_log_prob_delta.mean()
-        if proposal_log_prob is not None and previous_policy_distribution is not None:
-            # A mean under the wider proposal would no longer estimate rollout KL.
-            reference_policy_kl_estimate = diagonal_gaussian_kl(
-                old_policy_distribution, previous_policy_distribution
-            ).mean()
-
         metrics = {
             "actor_loss": actor_loss.item(),
             "entropy": entropy.mean().item(),
@@ -459,14 +398,6 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
             "MaxEntMPO/forward_kl_bound": self.forward_kl_bound,
             "MaxEntMPO/forward_kl_gap": rollout_forward_kl.item() - self.forward_kl_bound,
             "MaxEntMPO/forward_kl_controller": float(self.lambda_constraint == "forward_kl"),
-            "MaxEntMPO/momentum_lagrange_loss": momentum_lagrange_loss.item(),
-            "MaxEntMPO/momentum": momentum.item(),
-            "MaxEntMPO/momentum_margin": getattr(self, "momentum_margin", 0.0),
-            "MaxEntMPO/momentum_stability_ratio": momentum_stability_ratio.item(),
-            "MaxEntMPO/momentum_stability_margin": momentum_stability_margin.item(),
-            "MaxEntMPO/momentum_stability_exceeded": float(
-                momentum_stability_ratio.item() >= 1.0
-            ),
             "MaxEntMPO/forward_kl": forward_kl.item(),
             "MaxEntMPO/weighted_q": weighted_q.item(),
             "MaxEntMPO/ess_normalized": ess_normalized.item(),
@@ -476,17 +407,7 @@ class MaxEntMPO(MaxEntMomentumMixin, REPPO):
             "MaxEntMPO/maxent_normalizer": normalizer.mean().item(),
             "MaxEntMPO/log_ratio_mean": log_ratio.mean().item(),
             "MaxEntMPO/log_ratio_max": log_ratio.max().item(),
-            "MaxEntMPO/reference_log_prob_delta_mean": reference_policy_kl_estimate.item(),
-            "MaxEntMPO/reference_log_prob_delta_rms": (
-                reference_log_prob_delta.square().mean().sqrt().item()
-            ),
-            "MaxEntMPO/reference_policy_kl_estimate": reference_policy_kl_estimate.item(),
             **{f"MaxEntMPO/{key}": value.item() for key, value in ess_metrics.items()},
-            **{f"MaxEntMPO/{key}": value.item() for key, value in momentum_metrics.items()},
             **self._lagrange_metrics(),
         }
-        if self.momentum_reference_mode == "previous":
-            metrics["MaxEntMPO/adjacent_policy_kl_estimate"] = (
-                reference_policy_kl_estimate.item()
-            )
         return metrics
