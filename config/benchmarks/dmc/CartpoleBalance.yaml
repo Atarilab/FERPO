@@ -1,0 +1,106 @@
+runner:
+  algorithm:
+    action_proposal_std_scale: 1.0
+    auto_value_range_tuning: false
+    aux_loss_mult: 1.0
+    class_name: MaxEntMPO
+    critic_loss_type: hl_gauss
+    gamma: 0.99
+    init_alpha_momentum: 1.0e-07
+    interleave_actor_critic_updates: true
+    lam: 0.95
+    learning_rate: 0.001
+    max_grad_norm: 1.0
+    maxent_eps: 1.0e-08
+    momentum_ema_beta: 0.9330329915
+    momentum_factor: 0.0
+    momentum_margin: 0.0
+    momentum_margin_mode: fixed
+    momentum_reference_mode: previous
+    momentum_step_fraction: 0.0
+    normalize_rewards: false
+    num_action_samples: 16
+    num_learning_epochs: 8
+    num_mini_batches: 64
+    q_weight_ess_mode: mean_log
+    reward_norm_clip: null
+    reward_norm_ema_alpha: 0.01
+    reward_norm_eps: 1.0e-08
+    reward_norm_gamma: null
+    reward_norm_use_ema: true
+    rnd_cfg: null
+    self_normalize_q_weights: true
+    statewise_ess_bisection_steps: 8
+    symmetry_cfg: null
+    tanh_entropy_num_samples: 1
+    target_entropy: -1.0
+    target_q_weight_ess_fraction: 0.84
+    update_entropy_lagrangian: true
+    update_kl_lagrangian: true
+    update_momentum_lagrangian: false
+    use_log_temperature_dual_loss: false
+    use_tanh_entropy: true
+    value_range_ema_alpha: 0.05
+    value_range_min_half_span: 200.0
+    value_range_std_multiplier: 3.0
+    value_range_update_interval: 1
+  class_name: OnPolicyRunner
+  env:
+    collect_step_metrics: false
+    factory: examples.mujoco_playground_adapter:make_env
+    impl: warp
+    kind: mujoco_playground
+    num_envs: 1024
+    task_id: CartpoleBalance
+    warp_graph_mode: none
+  evaluation:
+    enabled: true
+    num_envs: 128
+    num_eval: 20
+  init_at_random_ep_len: true
+  max_iterations: 457
+  num_steps_per_env: 128
+  obs_groups:
+    critic:
+    - policy
+    policy:
+    - policy
+  policy:
+    action_lower_bound: -1.0
+    action_upper_bound: 1.0
+    activation: swish
+    actor_hidden_dim: 512
+    actor_min_std: 0.0
+    actor_obs_normalization: true
+    class_name: ActorQ
+    critic_hidden_dim: 512
+    critic_obs_normalization: true
+    distribution_type: tanh
+    init_alpha_kl: 0.01
+    init_alpha_temp: 0.05
+    init_noise_std: 1.0
+    log_std_max: null
+    log_std_min: null
+    noise_std_type: log
+    num_actor_layers: 3
+    num_critic_bins: 151
+    num_critic_encoder_layers: 2
+    num_critic_head_layers: 2
+    num_critic_predictor_layers: 2
+    smooth_log_std_bounds: false
+    smooth_log_std_min: false
+    state_dependent_std: true
+    use_actor_norm: true
+    use_critic_norm: true
+    vmax: 150.0
+    vmin: 0.0
+    zero_init_mean: false
+  seed: 1
+  experiment_name: ferpo_benchmarks_dmc_CartpoleBalance
+  run_name: ''
+  logger: tensorboard
+  save_interval: 0
+  checkpointing:
+    enabled: true
+    num_intervals: 20
+    save_final: true

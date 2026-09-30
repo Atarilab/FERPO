@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ferpo"
+version = "0.1.0"
+description = "Forward Entropy-Regularized Policy Optimization"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.11,<3.13"
+authors = [
+  {name = "Sebastian Sanokowski"},
+  {name = "Alireza Sarmadi"},
+  {name = "Majid Khadiv"},
+]
+dependencies = [
+  "torch==2.9.1",
+  "tensordict==0.10.0",
+  "numpy==2.3.5",
+  "pyyaml==6.0.3",
+  "tensorboard==2.21.0",
+  "GitPython==3.1.45",
+]
+
+[project.optional-dependencies]
+mujoco-playground = [
+  "jax[cuda12]==0.10.2",
+  "jaxlib==0.10.2",
+  "mujoco==3.9.0",
+  "mujoco-mjx==3.9.0",
+  "mujoco-warp[cuda]==3.9.0.1",
+  "playground[cuda]==0.2.0",
+  "warp-lang==1.13.0",
+]
+maniskill3 = ["mani-skill==3.0.1"]
+
+[project.urls]
+Repository = "https://github.com/Atarilab/FERPO"
+Issues = "https://github.com/Atarilab/FERPO/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rsl_rl*", "examples*"]
