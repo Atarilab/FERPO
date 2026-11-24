@@ -97,13 +97,16 @@ are not included here.
 
 | Paper method | Implementation |
 | --- | --- |
-| FERPO | `rsl_rl/algorithms/maxent_mpo.py` (`MaxEntMPO`) |
-| FERPO with cached Q values | `rsl_rl/algorithms/maxent_mpo_cached.py` (`MaxEntMPOCached`) |
-| FERPO with a state-value critic | `rsl_rl/algorithms/maxent_mpo_value.py` (`MaxEntMPOValue`) |
+| FERPO | `rsl_rl/algorithms/ferpo.py` (`FERPO`) |
+| FERPO with cached Q values | `rsl_rl/algorithms/ferpo_cached.py` (`FERPOCached`) |
+| FERPO with a state-value critic | `rsl_rl/algorithms/ferpo_value.py` (`FERPOValue`) |
 
-The implementation retains its original internal class names for compatibility
-with the recorded training configurations. Common rollout, critic, and
-normalization components are derived from [RSL-RL](https://github.com/leggedrobotics/rsl_rl).
+Saved configs and Python imports using the former `MaxEntMPO` class names
+continue to work. New runs log FERPO metrics under `FERPO/`. Existing
+TensorBoard logs use `MaxEntMPO/`.
+
+Common rollout, critic, and normalization components are derived from
+[RSL-RL](https://github.com/leggedrobotics/rsl_rl).
 FERPO inherits shared training machinery from the included REPPO base class.
 
 ## License and citation

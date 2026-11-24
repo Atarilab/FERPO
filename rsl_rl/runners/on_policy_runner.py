@@ -16,11 +16,7 @@ from tensordict import TensorDict, TensorDictBase
 from torch import nn
 from typing import Any
 
-from rsl_rl.algorithms import (
-    MaxEntMPO,
-    MaxEntMPOValue,
-    MaxEntMPOCached,
-)
+from rsl_rl.algorithms import FERPO, FERPOCached, FERPOValue
 from rsl_rl.algorithms.config_validation import (
     validate_critic_reward_normalization,
 )
@@ -34,7 +30,7 @@ from rsl_rl.utils import resolve_obs_groups
 from rsl_rl.utils.logger import Logger
 from rsl_rl.utils.numerics import non_finite_tensor_description
 
-Algorithm = MaxEntMPO | MaxEntMPOValue | MaxEntMPOCached
+Algorithm = FERPO | FERPOValue | FERPOCached
 
 _POLICY_CLASSES: dict[str, type[nn.Module]] = {
     policy_class.__name__: policy_class
@@ -44,12 +40,13 @@ _POLICY_CLASSES: dict[str, type[nn.Module]] = {
     )
 }
 _ALGORITHM_CLASSES: dict[str, type[Algorithm]] = {
-    algorithm_class.__name__: algorithm_class
-    for algorithm_class in (
-        MaxEntMPO,
-        MaxEntMPOValue,
-        MaxEntMPOCached,
-    )
+    "FERPO": FERPO,
+    "FERPOCached": FERPOCached,
+    "FERPOValue": FERPOValue,
+    # Keep saved training configurations loadable.
+    "MaxEntMPO": FERPO,
+    "MaxEntMPOCached": FERPOCached,
+    "MaxEntMPOValue": FERPOValue,
 }
 
 
@@ -255,7 +252,7 @@ class OnPolicyRunner:
         self.device = device
         if int(self.policy_cfg.get("action_chunk_size", 1)) > 1:
             raise ValueError(
-                "`policy.action_chunk_size > 1` is not supported by MaxEntMPO policies."
+                "`policy.action_chunk_size > 1` is not supported by FERPO policies."
             )
         self.env = env
         self.environment_steps_per_policy_step = int(

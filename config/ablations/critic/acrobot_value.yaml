@@ -3,7 +3,7 @@ runner:
     action_proposal_std_scale: 1.0
     auto_value_range_tuning: false
     aux_loss_mult: 1.0
-    class_name: MaxEntMPOValue
+    class_name: FERPOValue
     critic_loss_type: hl_gauss
     gamma: 0.99
     interleave_actor_critic_updates: false

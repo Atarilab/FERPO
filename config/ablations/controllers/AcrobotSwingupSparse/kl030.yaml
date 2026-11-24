@@ -3,7 +3,7 @@ runner:
     action_proposal_std_scale: 1.0
     auto_value_range_tuning: false
     aux_loss_mult: 1.0
-    class_name: MaxEntMPO
+    class_name: FERPO
     critic_loss_type: hl_gauss
     forward_kl_bound: 0.3
     gamma: 0.99
